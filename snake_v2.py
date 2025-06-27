@@ -1,0 +1,199 @@
+"""
+Enhanced Snake Environment
+This file extends the Snake class to include a proper observation space for RL algorithms.
+"""
+
+from collections import deque
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+
+from collections import deque
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+from math import sqrt
+
+
+def manhattan(a, b):
+    return sum(abs(val1 - val2) for val1, val2 in zip(a, b))
+
+
+def softmax(x):
+    """Compute softmax values for each sets of scores in x."""
+    e_x = np.exp(x - np.max(x))  # Subtracting the max value for numerical stability
+    return e_x / e_x.sum()
+
+
+class Snake:
+    def __init__(self, grid_size):
+        self.grid_size = grid_size
+        self.reset()
+
+        self.action_space = [0, 1, 2, 3]  # up, down, left, right
+        self.action_map = {
+            0: (-1, 0),
+            1: (1, 0),
+            2: (0, -1),
+            3: (0, 1),
+        }
+
+    def _get_snake_distance_from_mice(self):
+        dx = (self.mice[0] - self.snake[0][0]) / self.grid_size  # dx_to_food
+        dy = (self.mice[1] - self.snake[0][1]) / self.grid_size  # dt_to_food
+        return dx, dy
+
+    def build_observation_space(self):
+        """
+        dx, dy = distance from snake head to mice
+        distance_from_mice = manhatten_distance from mice to snake head
+        distance_from_wall = manhatten_distance from wall to snake head
+        direction_from_wall = direction from wall to snake head
+        snake_length = length of the snake vector
+        """
+        print(self.snake[0], self.mice)
+        distance_from_mice = manhattan(self.snake[0], self.mice)
+        distances_from_wall = [
+            manhattan(self.snake[0], (0, 0)),
+            manhattan(self.snake[0], (self.grid_size - 1, 0)),
+            manhattan(self.snake[0], (0, self.grid_size - 1)),
+            manhattan(self.snake[0], (self.grid_size - 1, self.grid_size - 1)),
+        ]
+
+        distance_from_wall = min(distances_from_wall)
+        direction_from_wall = np.argmin(distances_from_wall)
+
+        dx, dy = self._get_snake_distance_from_mice()
+        magnitude = max(np.sqrt(dx**2 + dy**2), 1e-5)
+        dir_x, dir_y = dx / magnitude, dy / magnitude
+
+        snake_length = len(self.snake)
+        self.observation_space = (
+            dx,
+            dy,
+            dir_x,
+            dir_y,
+            distance_from_mice,
+            distance_from_wall,
+            direction_from_wall,
+            snake_length,
+        )
+        # print('self.observation_space: ', self.observation_space)
+        return np.array(self.observation_space)
+
+    def get_state(self):
+        self.observation_space = self.build_observation_space()
+        return self.observation_space
+
+    def reset(self):
+        self.done = False
+        self.score = 0
+        self.snake = deque(
+            [
+                (
+                    np.random.randint(0, self.grid_size - 1),
+                    np.random.randint(0, self.grid_size - 1),
+                )
+            ]
+        )
+        self.spawn_mice()
+        self.observation_space = self.build_observation_space()
+        return self.get_state(), 0, False, {}
+
+    def step(self, action):
+        dx, dy = self.action_map[action]
+
+        # Check if we take action and snake dies?
+        # adds the action to the current position
+        new_head_x = self.snake[0][0] + dx
+        # adds the action to the current position
+        new_head_y = self.snake[0][1] + dy
+
+        if (
+            new_head_x < 0
+            or new_head_y < 0
+            or new_head_x >= self.grid_size
+            or new_head_y >= self.grid_size
+        ):
+            self.done = True
+            return self.get_state(), -1, self.done, {}  # state, reward, done, info
+
+        # check if snake ate itself
+        if (new_head_x, new_head_y) in self.snake:
+            self.done = True
+            return self.get_state(), -1, self.done, {}  # state, reward, done, info
+
+        # If snake does not die and its a valid move
+        # move snake
+        self.snake.appendleft((new_head_x, new_head_y))
+
+        # check if snake ate the mice
+        if (new_head_x, new_head_y) == self.mice:
+            self.score += 1
+            self.spawn_mice()  # spawns new mice
+            return self.get_state(), 1, self.done, {}
+        else:
+            self.snake.pop()  # remove tail - simulates movement
+            # to encourage faster food acquisition we will reinforce a small penalty for every step
+            # if snake moves closer to mice, give slightly positive reward else slightly negative reward
+            prev_distance = manhattan(self.snake[0], self.mice)
+            new_distance = manhattan((new_head_x, new_head_y), self.mice)
+            if new_distance < prev_distance:
+                reward = 0.01
+            else:
+                reward = -0.01
+            return self.get_state(), reward, self.done, {}
+
+    def render(self):
+        # Create a gridxgrid matrix of all zeros
+        grid = np.zeros((self.grid_size, self.grid_size))
+        # puts 1 wherever the snake is
+        for x, y in self.snake:
+            grid[x, y] = 1
+
+        # puts 2 where the mice is
+        grid[self.mice[0], self.mice[1]] = 2
+        return grid
+
+    def spawn_mice(self):
+        # should check for snake position
+        all_positions = set(
+            (x, y) for x in range(self.grid_size) for y in range(self.grid_size)
+        )
+        occupied_by_snake = set(self.snake)
+        free_positions = all_positions - occupied_by_snake
+        if not free_positions:
+            self.done = True
+            self.mice = None
+        else:
+            self.mice = random.choice(list(free_positions))
+        return self.mice
+
+
+if __name__ == "__main__":
+    # Test the environment
+    env = Snake(grid_size=9)
+    state, _, _, _ = env.reset()
+
+    print("Initial state:", state)
+    print("Grid:")
+    plt.imshow(env.render())
+    plt.show()
+
+    # Take a random action
+    action = random.choice(env.action_space)
+    next_state, reward, done, _ = env.step(action)
+
+    print(f"Action: {action}, Reward: {reward}, Done: {done}")
+    print("Next state:", next_state)
+    plt.imshow(env.render())
+    plt.show()
+
+    # Take a random action
+    action = random.choice(env.action_space)
+    next_state, reward, done, _ = env.step(action)
+
+    print(f"Action: {action}, Reward: {reward}, Done: {done}")
+    print("Next state:", next_state)
+    plt.imshow(env.render())
+    plt.show()
