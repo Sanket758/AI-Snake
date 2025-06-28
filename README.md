@@ -70,4 +70,4 @@ This project is licensed under the MIT License. See the LICENSE file for details
 Contributions are welcome! Feel free to open issues or submit pull requests to improve the project.
 
 ## Contact
-For any questions or feedback, please contact [your-email@example.com].
+For any questions or feedback, please contact [gadgesanket75@gmail.com].
